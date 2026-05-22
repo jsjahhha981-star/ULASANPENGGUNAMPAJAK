@@ -8,3 +8,4 @@ nltk
 wordcloud
 Sastrawi
 openpyxl
+plotly
