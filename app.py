@@ -661,7 +661,6 @@ elif menu == "Upload CSV":
         color:white;
     ">
         <h1>UPLOAD DATASET</h1>
-        
     </div>
     """, unsafe_allow_html=True)
 
@@ -693,79 +692,123 @@ elif menu == "Upload CSV":
     # =====================================
     if uploaded_file is not None:
 
-        data = pd.read_csv(uploaded_file)
+        try:
 
-        # =====================================
-        # PREVIEW DATA
-        # =====================================
-        st.subheader("PREVIEW DATASET")
+            data = pd.read_csv(uploaded_file)
 
-        st.dataframe(data.head(), use_container_width=True)
-
-        # =====================================
-        # CEK KOLOM
-        # =====================================
-        if "content" not in data.columns:
-            st.error("❌ Kolom 'content' tidak ditemukan di dataset!")
-        
-        else:
+            st.subheader("PREVIEW DATASET")
+            st.dataframe(data.head(), use_container_width=True)
 
             # =====================================
-            # PROCESSING CARD
+            # CEK KOLOM CONTENT
             # =====================================
-            with st.spinner("🔄 Sedang melakukan analisis..."):
+            if "content" not in data.columns:
 
-                # TF-IDF
-                vector = tfidf.transform(data["content"].astype(str))
+                st.error("❌ Kolom 'content' tidak ditemukan pada dataset!")
 
-                # PREDIKSI
-                data["Prediksi_Sentimen"] = svm_model.predict(vector)
+            else:
 
-                # CLUSTER
-                data["Cluster"] = kmeans_model.predict(vector)
+                with st.spinner("🔄 Sedang melakukan analisis..."):
 
-            # =====================================
-            # SUCCESS CARD
-            # =====================================
-            st.success("✅ Analisis berhasil dilakukan!")
+                    # =====================================
+                    # CLEANING DATA
+                    # =====================================
 
-            st.write("")
+                    data["content"] = (
+                        data["content"]
+                        .fillna("")
+                        .astype(str)
+                        .str.strip()
+                    )
 
-            st.markdown("""
-        <div style="
-            background:white;
-            padding:20px;
-            border-radius:15px;
-            box-shadow:0 4px 10px rgba(0,0,0,0.1);
-        ">
-        """, unsafe_allow_html=True)
+                    # hapus baris kosong
+                    data = data[data["content"] != ""]
 
-            # =====================================
-            # HASIL DATA
-            # =====================================
-            st.subheader("TABEL HASIL ANALISIS")
+                    # reset index
+                    data = data.reset_index(drop=True)
 
-            st.dataframe(data, use_container_width=True)
+                    # cek apakah data masih ada
+                    if len(data) == 0:
 
-            # =====================================
-            # DOWNLOAD EXCEL
-            # =====================================
-            output = "hasil_prediksi.xlsx"
-            data.to_excel(output, index=False)
+                        st.error(
+                            "❌ Semua data pada kolom 'content' kosong."
+                        )
+                        st.stop()
 
-            with open(output, "rb") as file:
+                    # =====================================
+                    # DEBUG INFO
+                    # =====================================
+                    st.info(
+                        f"Jumlah data yang dianalisis: {len(data)}"
+                    )
 
-                st.download_button(
-                    label="📥 Download Hasil Analisis",
-                    data=file,
-                    file_name="hasil_prediksi.xlsx",
+                    # =====================================
+                    # TF-IDF
+                    # =====================================
+                    vector = tfidf.transform(data["content"])
+
+                    # =====================================
+                    # PREDIKSI SENTIMEN
+                    # =====================================
+                    data["Prediksi_Sentimen"] = svm_model.predict(vector)
+
+                    # =====================================
+                    # CLUSTERING
+                    # =====================================
+                    data["Cluster"] = kmeans_model.predict(vector)
+
+                # =====================================
+                # SUCCESS
+                # =====================================
+                st.success("✅ Analisis berhasil dilakukan!")
+
+                st.write("")
+
+                st.subheader("TABEL HASIL ANALISIS")
+
+                st.dataframe(
+                    data,
                     use_container_width=True
                 )
 
-            # =====================================
-            # SIMPAN SESSION
-            # =====================================
-            st.session_state["data_upload"] = data
+                # =====================================
+                # DISTRIBUSI SENTIMEN
+                # =====================================
+                st.subheader("Distribusi Sentimen")
+
+                st.bar_chart(
+                    data["Prediksi_Sentimen"].value_counts()
+                )
+
+                # =====================================
+                # DOWNLOAD EXCEL
+                # =====================================
+                output = "hasil_prediksi.xlsx"
+
+                data.to_excel(
+                    output,
+                    index=False
+                )
+
+                with open(output, "rb") as file:
+
+                    st.download_button(
+                        label="📥 Download Hasil Analisis",
+                        data=file,
+                        file_name="hasil_prediksi.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+
+                # =====================================
+                # SIMPAN KE SESSION
+                # =====================================
+                st.session_state["data_upload"] = data
+
+        except Exception as e:
+
+            st.error("Terjadi kesalahan saat memproses dataset.")
+            st.exception(e)
 
 # =====================================
 # DASHBOARD MODEL
