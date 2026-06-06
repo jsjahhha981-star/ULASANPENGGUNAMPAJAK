@@ -9,3 +9,4 @@ wordcloud
 Sastrawi
 openpyxl
 plotly
+joblib
