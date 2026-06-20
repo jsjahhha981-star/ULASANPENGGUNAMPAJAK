@@ -106,10 +106,7 @@ with st.sidebar:
     if st.button("Riwayat", use_container_width=True):
         st.session_state.page = "Riwayat"
 
-    st.divider()
-
-    if st.button("Preprocessing", use_container_width=True):
-        st.session_state.page = "Preprocessing"
+    
 
     st.divider()
 
@@ -118,6 +115,8 @@ with st.sidebar:
 
     if st.button("Pemodelan Unsupervised", use_container_width=True):
         st.session_state.page = "Pemodelan Unsupervised"
+    if st.button("Perbandingan", use_container_width=True):
+        st.session_state.page = "Perbandingan"
 
 
     st.divider()
@@ -575,7 +574,18 @@ elif page == "Prediksi":
             })
         
 elif page == "Upload CSV":
+
     import pandas as pd
+    import numpy as np
+    import re
+    import nltk
+
+    from nltk.tokenize import word_tokenize
+    from nltk.corpus import stopwords
+    from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+
+    nltk.download("punkt")
+    nltk.download("stopwords")
 
     st.markdown("""
     <div style="
@@ -585,154 +595,197 @@ elif page == "Upload CSV":
         text-align:center;
         color:white;
     ">
-        <h1>UPLOAD DATASET</h1>
+        <h1>INPUT MANUAL + PREPROCESSING + SENTIMEN + CLUSTER</h1>
     </div>
     """, unsafe_allow_html=True)
 
     st.write("")
 
     # =====================================
-    # UPLOAD FILE CARD
+    # INPUT MANUAL
     # =====================================
-    st.markdown("""
-    <div style="
-        background:white;
-        padding:20px;
-        border-radius:15px;
-        box-shadow:0 4px 10px rgba(0,0,0,0.1);
-    ">
-    """, unsafe_allow_html=True)
+    df_template = pd.DataFrame({
+        "userName": [""],
+        "content": [""]
+    })
 
-    uploaded_file = st.file_uploader(
-        "Upload File CSV Anda",
-        type=["csv"]
+    data = st.data_editor(
+        df_template,
+        num_rows="dynamic",
+        use_container_width=True
     )
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.write("")
 
     # =====================================
-    # PROCESS FILE
+    # VALIDASI
     # =====================================
-    if uploaded_file is not None:
+    if data is not None:
 
         try:
+            data = data.dropna(subset=["content"])
+            data = data[data["content"].astype(str).str.strip() != ""]
+            data = data.reset_index(drop=True)
 
-            data = pd.read_csv(uploaded_file)
+            if len(data) == 0:
+                st.warning("⚠️ Data masih kosong.")
+                st.stop()
 
-            st.subheader("PREVIEW DATASET")
-            st.dataframe(data.head(), use_container_width=True)
+            st.subheader("📄 DATA INPUT")
+            st.dataframe(data, use_container_width=True)
 
             # =====================================
-            # CEK KOLOM CONTENT
+            # 1. CASE FOLDING
             # =====================================
-            if "content" not in data.columns:
+            data["CaseFolding"] = data["content"].str.lower().str.strip()
 
-                st.error("❌ Kolom 'content' tidak ditemukan pada dataset!")
+            # =====================================
+            # 2. CLEANING
+            # =====================================
+            def clean_text(text):
+                text = str(text)
+                text = re.sub(r'http\S+|www\S+', '', text)
+                text = re.sub(r'@\w+', '', text)
+                text = re.sub(r'#\w+', '', text)
+                text = re.sub(r'\d+', '', text)
+                text = re.sub(r'[^\w\s]', '', text)
+                text = re.sub(r'\s+', ' ', text).strip()
+                return text
 
-            else:
+            data["Cleaning"] = data["CaseFolding"].apply(clean_text)
 
-                with st.spinner("🔄 Sedang melakukan analisis..."):
+            # =====================================
+            # 3. TOKENIZING
+            # =====================================
+            data["Tokenizing"] = data["Cleaning"].apply(word_tokenize)
 
-                    # =====================================
-                    # CLEANING DATA
-                    # =====================================
+            # =====================================
+            # 4. STOPWORD REMOVAL
+            # =====================================
+            stop_words = set(stopwords.words("indonesian"))
+            stop_words.update(["yg", "dg", "aja", "nih", "sih", "nya"])
 
-                    data["content"] = (
-                        data["content"]
-                        .fillna("")
-                        .astype(str)
-                        .str.strip()
-                    )
+            def remove_stopwords(words):
+                return [w for w in words if w not in stop_words]
 
-                    # hapus baris kosong
-                    data = data[data["content"] != ""]
+            data["WithoutStopwords"] = data["Tokenizing"].apply(remove_stopwords)
 
-                    # reset index
-                    data = data.reset_index(drop=True)
+            # =====================================
+            # 5. NORMALIZATION
+            # =====================================
+            norm_dict = {
+                "gk": "tidak",
+                "ga": "tidak",
+                "nggak": "tidak",
+                "tdk": "tidak",
+                "bgt": "banget",
+                "apk": "aplikasi",
+                "app": "aplikasi",
+                "krn": "karena",
+                "utk": "untuk",
+                "dr": "dari",
+                "udh": "sudah",
+                "blm": "belum"
+            }
 
-                    # cek apakah data masih ada
-                    if len(data) == 0:
+            def normalize(words):
+                return " ".join([norm_dict.get(w, w) for w in words])
 
-                        st.error(
-                            "❌ Semua data pada kolom 'content' kosong."
-                        )
-                        st.stop()
+            data["Normalized"] = data["WithoutStopwords"].apply(normalize)
 
-                    # =====================================
-                    # DEBUG INFO
-                    # =====================================
-                    st.info(
-                        f"Jumlah data yang dianalisis: {len(data)}"
-                    )
+            # =====================================
+            # 6. STEMMING
+            # =====================================
+            factory = StemmerFactory()
+            stemmer = factory.create_stemmer()
 
-                    # =====================================
-                    # TF-IDF
-                    # =====================================
-                    vector = tfidf.transform(data["content"])
+            data["Stemming"] = data["Normalized"].apply(lambda x: stemmer.stem(str(x)))
 
-                    # =====================================
-                    # PREDIKSI SENTIMEN
-                    # =====================================
-                    data["Prediksi_Sentimen"] = svm_model.predict(vector)
+            # =====================================
+            # 7. SENTIMEN DICTIONARY
+            # =====================================
+            positif = [
+                "bagus","baik","cepat","mudah","mantap","bantu",
+                "lengkap","praktis","puas","nyaman","suka","aman"
+            ]
 
-                    # =====================================
-                    # CLUSTERING
-                    # =====================================
-                    data["Cluster"] = kmeans_model.predict(vector)
+            negatif = [
+                "buruk","error","gagal","lambat","lemot","bug",
+                "susah","ribet","kecewa","parah","rusak"
+            ]
 
-                # =====================================
-                # SUCCESS
-                # =====================================
-                st.success("✅ Analisis berhasil dilakukan!")
+            # =====================================
+            # 8. LABELING SENTIMEN
+            # =====================================
+            def sentiment_analysis(text):
+                words = str(text).split()
+                score = 0
 
-                st.write("")
+                for w in words:
+                    if w in positif:
+                        score += 1
+                    elif w in negatif:
+                        score -= 1
 
-                st.subheader("TABEL HASIL ANALISIS")
+                if score > 0:
+                    label = "positif"
+                elif score < 0:
+                    label = "negatif"
+                else:
+                    label = "netral"
 
-                st.dataframe(
-                    data,
-                    use_container_width=True
-                )
+                return score, label
 
-                # =====================================
-                # DISTRIBUSI SENTIMEN
-                # =====================================
-                st.subheader("Distribusi Sentimen")
+            hasil = data["Stemming"].apply(sentiment_analysis)
+            data["score"] = hasil.apply(lambda x: x[0])
+            data["sentimen"] = hasil.apply(lambda x: x[1])
 
-                st.bar_chart(
-                    data["Prediksi_Sentimen"].value_counts()
-                )
+            # =====================================
+            # 9. CLUSTERING (FIX UNTUK UNSUPERVISED)
+            # =====================================
+            try:
+                vector = tfidf.transform(data["content"])
+                data["Cluster"] = kmeans_model.predict(vector)
+            except:
+                st.warning("⚠️ Clustering belum aktif / model tidak tersedia")
 
-                # =====================================
-                # DOWNLOAD EXCEL
-                # =====================================
-                output = "hasil_prediksi.xlsx"
+            # =====================================
+            # OUTPUT
+            # =====================================
+            st.success("✅ Preprocessing, Sentimen & Cluster selesai!")
 
-                data.to_excel(
-                    output,
-                    index=False
-                )
+            st.subheader("📊 HASIL AKHIR")
 
-                with open(output, "rb") as file:
+            st.dataframe(
+                data[[
+                    "userName",
+                    "content",
+                    "CaseFolding",
+                    "Cleaning",
+                    "Tokenizing",
+                    "WithoutStopwords",
+                    "Normalized",
+                    "Stemming",
+                    "score",
+                    "sentimen",
+                    "Cluster"
+                ]],
+                use_container_width=True
+            )
 
-                    st.download_button(
-                        label="📥 Download Hasil Analisis",
-                        data=file,
-                        file_name="hasil_prediksi.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+            # =====================================
+            # CHART
+            # =====================================
+            st.subheader("📈 Distribusi Sentimen")
+            st.bar_chart(data["sentimen"].value_counts())
 
-                # =====================================
-                # SIMPAN KE SESSION
-                # =====================================
-                st.session_state["data_upload"] = data
+            # =====================================
+            # SAVE SESSION (PENTING)
+            # =====================================
+            st.session_state["data_upload"] = data
 
         except Exception as e:
-
-            st.error("Terjadi kesalahan saat memproses dataset.")
+            st.error("Terjadi kesalahan saat memproses data.")
             st.exception(e)
 
 elif page == "Riwayat":
@@ -1058,866 +1111,466 @@ elif page == "Riwayat":
     st.write("")
 
 elif page == "Pemodelan Supervised":
+
     import matplotlib.pyplot as plt
+    import plotly.express as px
+    import pandas as pd
+
     from wordcloud import WordCloud
-    import pandas as pd
 
-    st.markdown("""
-    <div style="
-        background: linear-gradient(90deg,#11998e,#38ef7d);
-        padding:20px;
-        border-radius:15px;
-        text-align:center;
-        margin-bottom:20px;
-        color:white;
-    ">
-        <h1>VISUALISASI SENTIMEN</h1>
-        
-    </div>
-    """, unsafe_allow_html=True)
-
-    if "data_upload" not in st.session_state:
-
-        st.warning("Silakan upload dataset terlebih dahulu")
-
-    else:
-
-        data = st.session_state["data_upload"]
-
-        # =====================================
-        # HITUNG SENTIMEN
-        # =====================================
-        positif = data[data['Prediksi_Sentimen'] == "positif"].shape[0]
-        negatif = data[data['Prediksi_Sentimen'] == "negatif"].shape[0]
-        netral  = data[data['Prediksi_Sentimen'] == "netral"].shape[0]
-
-        # =====================================
-        # CARD METRIC
-        # =====================================
-        col1, col2, col3 = st.columns(3)
-
-        col1.markdown(f"""
-        <div style="
-            background:linear-gradient(135deg,#00c853,#64dd17);
-            padding:20px;
-            border-radius:15px;
-            text-align:center;
-            color:white;
-        ">
-            <h3>😊 Positif</h3>
-            <h1>{positif}</h1>
-        </div>
-        """, unsafe_allow_html=True)
-
-        col2.markdown(f"""
-        <div style="
-            background:linear-gradient(135deg,#d50000,#ff1744);
-            padding:20px;
-            border-radius:15px;
-            text-align:center;
-            color:white;
-        ">
-            <h3>😠 Negatif</h3>
-            <h1>{negatif}</h1>
-        </div>
-        """, unsafe_allow_html=True)
-
-        col3.markdown(f"""
-        <div style="
-            background:linear-gradient(135deg,#2962ff,#448aff);
-            padding:20px;
-            border-radius:15px;
-            text-align:center;
-            color:white;
-        ">
-            <h3>😐 Netral</h3>
-            <h1>{netral}</h1>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.write("")
-
-        # =====================================
-        # PIE CHART (RAPI)
-        # =====================================
-        st.subheader("PERSENTASE SENTIMEN")
-
-        fig1, ax1 = plt.subplots(figsize=(5,5))  # 🔥 diperkecil
-
-        ax1.pie(
-            [positif, negatif, netral],
-            labels=["Positif", "Negatif", "Netral"],
-            autopct='%1.1f%%',
-            startangle=90,
-            colors=['#00c853', '#d50000', '#2962ff']
-        )
-
-        ax1.axis('equal')
-
-        st.pyplot(fig1, use_container_width=False)
-
-        st.write("")
-
-        # =====================================
-        # WORDCLOUD (SEJAJAR 3 KOLOM)
-        # =====================================
-        st.subheader("WORD CLOUD SENTIMEN")
-
-        col1, col2, col3 = st.columns(3)
-
-        # ================= POSITIF =================
-        with col1:
-            st.markdown("### 😊 Positif")
-
-            text_pos = " ".join(
-                data[data['Prediksi_Sentimen']=="positif"]['content'].astype(str)
-            )
-
-            if text_pos.strip():
-                wc_pos = WordCloud(
-                    width=400,
-                    height=300,
-                    background_color='white',
-                    colormap='Greens'
-                ).generate(text_pos)
-
-                fig, ax = plt.subplots(figsize=(4,3))
-                ax.imshow(wc_pos, interpolation='bilinear')
-                ax.axis("off")
-                st.pyplot(fig)
-            else:
-                st.info("Tidak ada data positif")
-
-        # ================= NEGATIF =================
-        with col2:
-            st.markdown("### 😠 Negatif")
-
-            text_neg = " ".join(
-                data[data['Prediksi_Sentimen']=="negatif"]['content'].astype(str)
-            )
-
-            if text_neg.strip():
-                wc_neg = WordCloud(
-                    width=400,
-                    height=300,
-                    background_color='white',
-                    colormap='Reds'
-                ).generate(text_neg)
-
-                fig, ax = plt.subplots(figsize=(4,3))
-                ax.imshow(wc_neg, interpolation='bilinear')
-                ax.axis("off")
-                st.pyplot(fig)
-            else:
-                st.info("Tidak ada data negatif")
-
-        # ================= NETRAL =================
-        with col3:
-            st.markdown("### 😐 Netral")
-
-            text_net = " ".join(
-                data[data['Prediksi_Sentimen']=="netral"]['content'].astype(str)
-            )
-
-            if text_net.strip():
-                wc_net = WordCloud(
-                    width=400,
-                    height=300,
-                    background_color='white',
-                    colormap='Blues'
-                ).generate(text_net)
-
-                fig, ax = plt.subplots(figsize=(4,3))
-                ax.imshow(wc_net, interpolation='bilinear')
-                ax.axis("off")
-                st.pyplot(fig)
-            else:
-                st.info("Tidak ada data netral")
-
-                import plotly.express as px
-    import pandas as pd
     from sklearn.metrics import (
         confusion_matrix,
         accuracy_score,
         classification_report
     )
 
-    st.markdown("""
-    <div style="
-        background: linear-gradient(90deg,#11998e,#38ef7d);
-        padding:25px;
-        border-radius:20px;
-        text-align:center;
-        color:white;
-    ">
-        <h1></h1>
-        
-    </div>
-    """, unsafe_allow_html=True)
 
-    st.write("")
-
-    # =====================================
+    # ===============================
     # STYLE
-    # =====================================
+    # ===============================
+
     st.markdown("""
     <style>
 
-    .metric-card {
-        background: linear-gradient(135deg, #1e3c72, #2a5298);
-        padding: 25px;
-        border-radius: 20px;
-        color: white;
-        text-align: center;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.2);
-        margin-bottom: 20px;
+    .header-card{
+        background:linear-gradient(135deg,#11998e,#38ef7d);
+        padding:30px;
+        border-radius:25px;
+        color:white;
+        text-align:center;
+        box-shadow:0 8px 25px rgba(0,0,0,.2);
     }
 
-    .metric-title {
-        font-size:16px;
-        font-weight:bold;
+
+    .card{
+        padding:25px;
+        border-radius:22px;
+        box-shadow:0 6px 20px rgba(0,0,0,.15);
+        margin-bottom:20px;
     }
 
-    .metric-value {
-        font-size:32px;
-        font-weight:bold;
+
+    .metric{
+        color:white;
+        text-align:center;
+        padding:20px;
+        border-radius:20px;
     }
 
-    .section-title {
-        font-size:24px;
-        font-weight:bold;
-        color:#11998e;
-        margin-top:20px;
-        margin-bottom:10px;
+
+    .metric h1{
+        font-size:35px;
     }
+
 
     </style>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True)
 
-    # =====================================
-    # CHECK DATA
-    # =====================================
-    if "data_upload" not in st.session_state:
-        st.warning("⚠️ Upload dataset terlebih dahulu")
 
-    else:
 
-        data = st.session_state["data_upload"]
+    # ===============================
+    # HEADER
+    # ===============================
 
-        if "content" not in data.columns:
-            st.error("Kolom 'content' tidak ditemukan")
-
-        elif "sentimen" not in data.columns:
-            st.error("Kolom 'sentimen' tidak ditemukan")
-
-        else:
-
-            # =====================================
-            # PREPROCESS
-            # =====================================
-            X_test = data["content"].astype(str)
-            y_true = data["sentimen"]
-
-            vector = tfidf.transform(X_test)
-            y_pred = svm_model.predict(vector)
-
-            # =====================================
-            # METRICS
-            # =====================================
-            accuracy = accuracy_score(y_true, y_pred)
-            report = classification_report(y_true, y_pred, output_dict=True)
-
-            precision = report["weighted avg"]["precision"]
-            recall = report["weighted avg"]["recall"]
-            f1 = report["weighted avg"]["f1-score"]
-
-            data["Prediksi"] = y_pred
-
-            # =====================================
-            # METRIC CARD
-            # =====================================
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.markdown(f"""
-                <div class='metric-card'>
-                    <div class='metric-title'>Accuracy</div>
-                    <div class='metric-value'>{accuracy:.2%}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col2:
-                st.markdown(f"""
-                <div class='metric-card'>
-                    <div class='metric-title'>Precision</div>
-                    <div class='metric-value'>{precision:.2%}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col3:
-                st.markdown(f"""
-                <div class='metric-card'>
-                    <div class='metric-title'>Recall</div>
-                    <div class='metric-value'>{recall:.2%}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col4:
-                st.markdown(f"""
-                <div class='metric-card'>
-                    <div class='metric-title'>F1-Score</div>
-                    <div class='metric-value'>{f1:.2%}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.write("")
-
-            # =====================================
-            # CONFUSION MATRIX (PLOTLY INTERAKTIF)
-            # =====================================
-            st.markdown("""
-            <div class='section-title'>
-                Confusion Matrix
-            </div>
-            """, unsafe_allow_html=True)
-
-            cm = confusion_matrix(y_true, y_pred)
-
-            labels = ["Negatif", "Netral", "Positif"]
-
-            cm_df = pd.DataFrame(cm, index=labels, columns=labels).reset_index()
-            cm_df = cm_df.melt(id_vars="index")
-
-            cm_df.columns = ["Actual", "Predicted", "Value"]
-
-            fig = px.density_heatmap(
-                cm_df,
-                x="Predicted",
-                y="Actual",
-                z="Value",
-                text_auto=True,
-                color_continuous_scale="Blues"
-            )
-
-            fig.update_layout(
-                height=420,
-                margin=dict(t=40, b=20, l=20, r=20)
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-
-            # =====================================
-            # CLASSIFICATION REPORT
-            # =====================================
-            st.markdown("""
-            <div class='section-title'>
-                Classification Report
-            </div>
-            """, unsafe_allow_html=True)
-
-            report_df = pd.DataFrame(report).transpose()
-
-            st.dataframe(report_df, use_container_width=True)
-
-            # =====================================
-            # HASIL PREDIKSI
-            # =====================================
-            st.markdown("""
-            <div class='section-title'>
-                Hasil Prediksi Model
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.dataframe(
-                data[["content", "sentimen", "Prediksi"]],
-                use_container_width=True,
-                height=350
-            )
-            
-elif page == "Preprocessing":
-
-    import pandas as pd
-    import numpy as np
-    import re
-    import nltk
-
-    from nltk.tokenize import word_tokenize
-    from nltk.corpus import stopwords
-    from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-
-    nltk.download("punkt")
-    nltk.download("stopwords")
 
     st.markdown("""
-    <div style="
-        background: linear-gradient(90deg,#11998e,#38ef7d);
-        padding:30px;
-        border-radius:20px;
-        text-align:center;
-    ">
-        <h1 style="color:white;">
-            PREPROCESSING DAN PELABELAN DATA
-        </h1>
+    <div class="header-card">
+
+    <h1>VISUALISASI SENTIMEN</h1>
+
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True)
+
+
+
+    # ===============================
+    # DATA CHECK
+    # ===============================
+
+    if "data_upload" not in st.session_state:
+
+        st.warning(
+            "⚠️ Upload dataset terlebih dahulu"
+        )
+
+        st.stop()
+
+
+
+    data = st.session_state["data_upload"]
+
+
+
+
+    # ===============================
+    # PREDIKSI
+    # ===============================
+
+
+    vector = tfidf.transform(
+        data["content"].astype(str)
+    )
+
+
+    y_true = data["sentimen"]
+
+
+    y_pred = svm_model.predict(vector)
+
+
+    data["Prediksi"] = y_pred
+
+
+    st.session_state["data_upload"]=data
+
+
+
+
+    # ===============================
+    # SENTIMEN CARD
+    # ===============================
+
+
+    st.subheader(
+        "DISTRIBUSI SENTIMEN"
+    )
+
+
+    positif = (
+        data["sentimen"]=="positif"
+    ).sum()
+
+
+    negatif = (
+        data["sentimen"]=="negatif"
+    ).sum()
+
+
+    netral = (
+        data["sentimen"]=="netral"
+    ).sum()
+
+
+
+    c1,c2,c3 = st.columns(3)
+
+
+    for col,title,value,color in [
+
+        (c1,"😊 Positif",positif,"#00c853"),
+
+        (c2,"😡 Negatif",negatif,"#d50000"),
+
+        (c3,"😐 Netral",netral,"#2962ff")
+
+    ]:
+
+
+        with col:
+
+            st.markdown(f"""
+
+            <div class="metric"
+            style="
+            background:linear-gradient(135deg,{color},#222);
+            ">
+
+
+            <h3>{title}</h3>
+
+            <h1>{value}</h1>
+
+
+            </div>
+
+            """,
+            unsafe_allow_html=True)
+
+
 
     st.write("")
 
-    uploaded_file = st.file_uploader(
-        "Upload Dataset CSV",
-        type=["csv"]
+
+
+    # ===============================
+    # WORDCLOUD
+    # ===============================
+
+
+    st.subheader(
+        "WORDCLOUD SENTIMEN"
     )
 
-    if uploaded_file is not None:
 
-        review = pd.read_csv(uploaded_file)
 
-        st.subheader("📄 Dataset Awal")
+    wc_col = st.columns(3)
 
-        st.dataframe(
-            review.head(),
-            use_container_width=True
+
+
+    sentiment_list=[
+
+        ("positif","😊 Positif","Greens"),
+
+        ("negatif","😡 Negatif","Reds"),
+
+        ("netral","😐 Netral","Blues")
+
+    ]
+
+
+
+    for col,(label,title,color) in zip(
+        wc_col,
+        sentiment_list
+    ):
+
+
+        with col:
+
+
+            st.markdown(
+            f"""
+            <div class="card">
+
+            <h3>{title}</h3>
+
+            </div>
+            """,
+            unsafe_allow_html=True
+            )
+
+
+            text=" ".join(
+                data[
+                    data["sentimen"]==label
+                ]["content"]
+                .astype(str)
+            )
+
+
+            if text.strip():
+
+
+                wc=WordCloud(
+
+                    width=400,
+
+                    height=300,
+
+                    background_color="white",
+
+                    colormap=color
+
+                ).generate(text)
+
+
+
+                fig,ax=plt.subplots(
+                    figsize=(4,3)
+                )
+
+
+                ax.imshow(
+                    wc,
+                    interpolation="bilinear"
+                )
+
+                ax.axis("off")
+
+
+                st.pyplot(fig)
+
+
+
+
+    # ===============================
+    # EVALUASI MODEL
+    # ===============================
+
+
+    st.subheader(
+        "EVALUASI MODEL SVM"
+    )
+
+
+
+    accuracy=accuracy_score(
+        y_true,
+        y_pred
+    )
+
+
+    report=classification_report(
+        y_true,
+        y_pred,
+        output_dict=True,
+        zero_division=0
+    )
+
+
+
+    metrics=[
+
+        ("Accuracy",report["accuracy"],"#00c853"),
+
+        ("Precision",
+        report["weighted avg"]["precision"],
+        "#2979ff"),
+
+        ("Recall",
+        report["weighted avg"]["recall"],
+        "#8e24aa"),
+
+        ("F1 Score",
+        report["weighted avg"]["f1-score"],
+        "#ff6d00")
+
+    ]
+
+
+
+    cols=st.columns(4)
+
+
+
+    for col,(title,value,color) in zip(
+        cols,
+        metrics
+    ):
+
+        with col:
+
+            st.markdown(f"""
+
+            <div class="metric"
+            style="
+            background:linear-gradient(135deg,{color},#111);
+            ">
+
+
+            <h3>{title}</h3>
+
+
+            <h1>
+            {value:.2%}
+            </h1>
+
+
+            </div>
+
+
+            """,
+            unsafe_allow_html=True)
+
+
+
+
+    # ===============================
+    # CONFUSION MATRIX
+    # ===============================
+
+
+    st.subheader(
+        "CONFUSION MATRIX"
+    )
+
+
+    labels=sorted(
+        set(y_true)
+        .union(set(y_pred))
+    )
+
+
+    cm=confusion_matrix(
+        y_true,
+        y_pred,
+        labels=labels
+    )
+
+
+
+    cm_df=pd.DataFrame(
+        cm,
+        index=labels,
+        columns=labels
+    )
+
+
+
+    fig=px.imshow(
+
+        cm_df,
+
+        text_auto=True,
+
+        color_continuous_scale="Teal",
+
+        labels=dict(
+            x="Prediksi",
+            y="Aktual"
         )
 
-        # =====================================
-        # VALIDASI
-        # =====================================
+    )
 
-        if "content" not in review.columns:
 
-            st.error(
-                "Kolom 'content' tidak ditemukan."
-            )
+    fig.update_layout(
+        height=450
+    )
 
-        else:
 
-            with st.spinner(
-                "Sedang melakukan preprocessing..."
-            ):
-
-                # =====================================
-                # HAPUS DATA KOSONG
-                # =====================================
-
-                review = review.dropna(
-                    subset=["content"]
-                )
-
-                review = review[
-                    review["content"]
-                    .astype(str)
-                    .str.strip() != ""
-                ]
-
-                review = review.reset_index(
-                    drop=True
-                )
-
-                # =====================================
-                # 1. CASE FOLDING
-                # =====================================
-
-                def case_folding(text):
-
-                    if pd.isna(text):
-                        return ""
-
-                    text = str(text)
-                    text = text.lower()
-                    text = text.strip()
-
-                    text = " ".join(
-                        text.split()
-                    )
-
-                    return text
-
-                review["CaseFolding"] = review[
-                    "content"
-                ].apply(case_folding)
-
-                # =====================================
-                # 2. CLEANING
-                # =====================================
-
-                def clean_text(text):
-
-                    text = str(text)
-
-                    text = re.sub(
-                        r'[\U00010000-\U0010ffff]',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'http\S+|www\S+',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'@\w+',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'#\w+',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'\d+',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'[^\w\s]',
-                        '',
-                        text
-                    )
-
-                    text = re.sub(
-                        r'\s+',
-                        ' ',
-                        text
-                    ).strip()
-
-                    return text
-
-                review["Cleaning"] = review[
-                    "CaseFolding"
-                ].apply(clean_text)
-
-                # =====================================
-                # HAPUS DUPLIKAT
-                # =====================================
-
-                review = review.drop_duplicates(
-                    subset=["Cleaning"]
-                )
-
-                review = review.reset_index(
-                    drop=True
-                )
-
-                # =====================================
-                # 3. TOKENIZING
-                # =====================================
-
-                def tokenizing_text(text):
-
-                    return word_tokenize(
-                        str(text)
-                    )
-
-                review["Tokenizing"] = review[
-                    "Cleaning"
-                ].apply(tokenizing_text)
-
-                # =====================================
-                # 4. STOPWORD REMOVAL
-                # =====================================
-
-                daftar_stopword = (
-                    stopwords.words(
-                        "indonesian"
-                    )
-                )
-
-                daftar_stopword.extend([
-                    "yg",
-                    "dg",
-                    "rt",
-                    "aja",
-                    "nih",
-                    "sih",
-                    "nya"
-                ])
-
-                daftar_stopword = set(
-                    daftar_stopword
-                )
-
-                def stopword_removal(words):
-
-                    return [
-                        word
-                        for word in words
-                        if word not in daftar_stopword
-                    ]
-
-                review["WithoutStopwords"] = (
-                    review["Tokenizing"]
-                    .apply(stopword_removal)
-                )
-
-                # =====================================
-                # 5. NORMALIZATION
-                # =====================================
-
-                normalization_dict = {
-
-                    "gk": "tidak",
-                    "ga": "tidak",
-                    "nggak": "tidak",
-                    "tdk": "tidak",
-
-                    "bgt": "banget",
-                    "bgtt": "banget",
-
-                    "apk": "aplikasi",
-                    "app": "aplikasi",
-
-                    "mantul": "mantap",
-
-                    "sm": "sama",
-
-                    "krn": "karena",
-
-                    "utk": "untuk",
-
-                    "dr": "dari",
-
-                    "yg": "yang",
-
-                    "udh": "sudah",
-
-                    "blm": "belum"
-                }
-
-                def normalize_text(text):
-
-                    if isinstance(
-                        text,
-                        list
-                    ):
-                        words = text
-
-                    else:
-                        words = str(
-                            text
-                        ).split()
-
-                    hasil = []
-
-                    for word in words:
-
-                        if word in normalization_dict:
-
-                            hasil.append(
-                                normalization_dict[
-                                    word
-                                ]
-                            )
-
-                        else:
-
-                            hasil.append(
-                                word
-                            )
-
-                    return " ".join(
-                        hasil
-                    )
-
-                review["Normalized"] = (
-                    review["WithoutStopwords"]
-                    .apply(normalize_text)
-                )
-
-                # =====================================
-                # 6. STEMMING
-                # =====================================
-
-                factory = (
-                    StemmerFactory()
-                )
-
-                stemmer = (
-                    factory
-                    .create_stemmer()
-                )
-
-                def stemming_text(text):
-
-                    if pd.isna(text):
-                        return ""
-
-                    return stemmer.stem(
-                        str(text)
-                    )
-
-                review["Stemming"] = (
-                    review["Normalized"]
-                    .apply(stemming_text)
-                )
-
-                # =====================================
-                # 7. KAMUS SENTIMEN
-                # =====================================
-
-                positif = [
-
-                    "bagus",
-                    "baik",
-                    "cepat",
-                    "mudah",
-                    "mantap",
-                    "bantu",
-                    "lengkap",
-                    "praktis",
-                    "guna",
-                    "puas",
-                    "nyaman",
-                    "stabil",
-                    "aman",
-                    "suka",
-                    "hasil",
-                    "puas"
-                ]
-
-                negatif = [
-
-                    "buruk",
-                    "error",
-                    "gagal",
-                    "lambat",
-                    "lemot",
-                    "bug",
-                    "susah",
-                    "ribet",
-                    "kecewa",
-                    "ganggu",
-                    "masalah",
-                    "kendala",
-                    "rusak",
-                    "jelek",
-                    "parah",
-                    "payah"
-                ]
-
-                # =====================================
-                # 8. LABELING
-                # =====================================
-
-                def sentiment_analysis(text):
-
-                    if pd.isna(text):
-                        return 0, "netral"
-
-                    words = str(
-                        text
-                    ).split()
-
-                    score = 0
-
-                    for word in words:
-
-                        if word in positif:
-                            score += 1
-
-                        elif word in negatif:
-                            score -= 1
-
-                    if score > 0:
-                        label = "positif"
-
-                    elif score < 0:
-                        label = "negatif"
-
-                    else:
-                        label = "netral"
-
-                    return score, label
-
-                hasil = review[
-                    "Stemming"
-                ].apply(
-                    sentiment_analysis
-                )
-
-                review["score"] = (
-                    hasil.apply(
-                        lambda x: x[0]
-                    )
-                )
-
-                review["sentimen"] = (
-                    hasil.apply(
-                        lambda x: x[1]
-                    )
-                )
-
-            st.success(
-                "✅ Preprocessing dan pelabelan berhasil dilakukan"
-            )
-
-            st.write("")
-
-            # =====================================
-            # HASIL
-            # =====================================
-
-            st.subheader(
-                "📊 Hasil Preprocessing"
-            )
-
-            st.dataframe(
-                review[
-                    [
-                        "content",
-                        "CaseFolding",
-                        "Cleaning",
-                        "Normalized",
-                        "Stemming",
-                        "score",
-                        "sentimen"
-                    ]
-                ],
-                use_container_width=True
-            )
-
-            st.write("")
-
-            # =====================================
-            # DISTRIBUSI LABEL
-            # =====================================
-
-            st.subheader(
-                "📈 Distribusi Sentimen"
-            )
-
-            st.bar_chart(
-                review[
-                    "sentimen"
-                ].value_counts()
-            )
-
-            st.write("")
-
-            # =====================================
-            # # DOWNLOAD CSV
-            # # =====================================
-            output_file = "hasil_preprocessing_label.csv"
-            review.to_csv(
-                output_file,
-                index=False
-                )
-            with open(
-                output_file,
-                "rb"
-                ) as file:
-                st.download_button(
-        label="📥 Download Hasil Preprocessing",
-        data=file,
-        file_name=output_file,
-        mime="text/csv",
+    st.plotly_chart(
+        fig,
         use_container_width=True
     )
+
+
+
+    # ===============================
+    # REPORT
+    # ===============================
+
+
+    st.subheader(
+        "CLASSIFICATION REPORT"
+    )
+
+
+    st.dataframe(
+        pd.DataFrame(report)
+        .transpose(),
+        use_container_width=True
+    )
+
+
+
+    # ===============================
+    # HASIL
+    # ===============================
+
+
+    st.subheader(
+        "HASIL PREDIKSI SENTIMEN"
+    )
+
+
+    st.dataframe(
+
+        data[
+            [
+            "userName",
+            "content",
+            "sentimen",
+            "Prediksi"
+            ]
+        ],
+
+        use_container_width=True,
+
+        height=400
+    )
+            
 elif page == "Pemodelan Unsupervised":
     import matplotlib.pyplot as plt
     from wordcloud import WordCloud
@@ -2033,39 +1686,62 @@ elif page == "Pemodelan Unsupervised":
         st.write("")
 
         # =====================================
-        # DISTRIBUSI CLUSTER
-        # =====================================
-        st.subheader("DISTRIBUSI CLUSTER PERSONA")
+        # # DISTRIBUSI CLUSTER PERSONA MODERN
+        # # =====================================
+        
+        cluster_df = pd.DataFrame({
+            "Cluster":
+                jumlah_cluster.index.astype(str),
+                "Jumlah":
+                    jumlah_cluster.values
+                    })
+        fig4 = px.bar(
+            cluster_df,
+            x="Cluster",
+            y="Jumlah",
+            text="Jumlah",
+            color="Cluster",
+            title="Distribusi Pengguna Berdasarkan Cluster",
+            )
+        fig4.update_traces(
+            textposition="outside",
+            marker_line_width=1
+            )
+        fig4.update_layout(
+            height=450,
+            showlegend=False,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            title={
+                "text":
+                    "Distribusi Cluster Persona",
+                    "x":0.5,
+                    "xanchor":"center"
+                    },
+            font=dict(
+                size=14
+                ),
+            margin=dict(
+                t=70,
+                b=40,
+                l=40,
+                r=40
+                )
+            )
+        st.plotly_chart(
+            fig4,
+            use_container_width=True
+            )
+        cluster_max = jumlah_cluster.idxmax()
+        jumlah_max = jumlah_cluster.max()
+        st.markdown(f"""
 
-        fig4, ax4 = plt.subplots(figsize=(8,4))  # 🔥 diperkecil
-
-        bars = ax4.bar(
-            jumlah_cluster.index.astype(str),
-            jumlah_cluster.values,
-            color="#11998e"
-        )
-
-        ax4.set_title("Distribusi Cluster Persona", fontsize=14)
-        ax4.set_xlabel("Cluster")
-        ax4.set_ylabel("Jumlah Data")
-
-        for bar in bars:
-            yval = bar.get_height()
-            ax4.text(bar.get_x() + bar.get_width()/2,
-                     yval + 1,
-                     int(yval),
-                     ha='center',
-                     fontsize=10)
-
-        st.pyplot(fig4)
-
-        st.write("")
-
+""",
+unsafe_allow_html=True)
         # =====================================
         # PERSENTASE CLUSTER
         # =====================================
         st.subheader("PERSENTASE CLUSTER")
-
         for i in jumlah_cluster.index:
 
             persen = (jumlah_cluster[i] / total_data) * 100
@@ -2095,7 +1771,7 @@ elif page == "Pemodelan Unsupervised":
         # =====================================
         # SENTIMEN DOMINAN
         # =====================================
-        sentimen_dominan = cluster_data["Prediksi_Sentimen"].value_counts()
+        sentimen_dominan = cluster_data["sentimen"].value_counts()
         dominant_sentiment = sentimen_dominan.idxmax()
 
         st.info(f"""
@@ -2109,7 +1785,7 @@ elif page == "Pemodelan Unsupervised":
         st.subheader("CONTOH KOMENTAR")
 
         st.dataframe(
-            cluster_data[["content", "Prediksi_Sentimen"]].head(10),
+            cluster_data[["content", "sentimen"]].head(10),
             use_container_width=True
         )
 
@@ -2156,6 +1832,380 @@ elif page == "Pemodelan Unsupervised":
             st.warning(f"""
             Cluster {selected_cluster} menunjukkan pengguna dengan opini netral.
             """)
+elif page == "Perbandingan":
+
+    import pandas as pd
+    import plotly.express as px
+
+    from sklearn.metrics import (
+        accuracy_score,
+        precision_score,
+        recall_score,
+        f1_score
+    )
+
+
+    # =====================================
+    # STYLE
+    # =====================================
+
+    st.markdown("""
+    <style>
+
+    .main-card{
+        padding:25px;
+        border-radius:25px;
+        box-shadow:0 8px 25px rgba(0,0,0,0.15);
+        margin-bottom:20px;
+    }
+
+
+    .metric-card{
+        padding:20px;
+        border-radius:20px;
+        color:white;
+        text-align:center;
+        box-shadow:0 5px 15px rgba(0,0,0,0.15);
+    }
+
+
+    .metric-title{
+        font-size:15px;
+    }
+
+
+    .metric-value{
+        font-size:32px;
+        font-weight:bold;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True)
+
+
+
+
+    # =====================================
+    # HEADER
+    # =====================================
+
+
+    st.markdown("""
+    <div class="
+    main-card"
+    style="
+    background:linear-gradient(135deg,#11998e,#38ef7d);
+    color:white;
+    text-align:center;
+    ">
+
+    <h1>PERBANDINGAN MODEL</h1>
+
+    <h3>
+    Supervised Learning VS Unsupervised Learning
+    </h3>
+
+    </div>
+
+    """,
+    unsafe_allow_html=True)
+
+
+
+    # =====================================
+    # CHECK DATA
+    # =====================================
+
+
+    if "data_upload" not in st.session_state:
+
+        st.warning(
+            "⚠️ Silakan input dataset terlebih dahulu"
+        )
+
+        st.stop()
+
+
+
+    data = st.session_state["data_upload"]
+
+
+
+
+    # =====================================
+    # AUTO PREDIKSI
+    # =====================================
+
+
+    if "Prediksi" not in data.columns:
+
+
+        vector = tfidf.transform(
+            data["content"].astype(str)
+        )
+
+
+        data["Prediksi"] = (
+            svm_model.predict(vector)
+        )
+
+
+
+
+    # =====================================
+    # AUTO CLUSTER
+    # =====================================
+
+
+    if "Cluster" not in data.columns:
+
+
+        vector = tfidf.transform(
+            data["content"].astype(str)
+        )
+
+
+        data["Cluster"] = (
+            kmeans_model.predict(vector)
+        )
+
+
+
+    st.session_state["data_upload"] = data
+
+
+
+
+
+    # =====================================
+    # MODEL CARD
+    # =====================================
+
+
+    col1,col2 = st.columns(2)
+
+
+
+    with col1:
+
+        st.markdown("""
+        <div class="main-card"
+        style="
+        background:linear-gradient(135deg,#2196f3,#21cbf3);
+        color:white;
+        ">
+
+        <h2>SUPERVISED</h2>
+
+        <h3>SVM Classification</h3>
+
+        <p>
+        Melakukan prediksi sentimen
+        pengguna berdasarkan data.
+        </p>
+
+        </div>
+
+        """,
+        unsafe_allow_html=True)
+
+
+
+
+    with col2:
+
+        st.markdown("""
+        <div class="main-card"
+        style="
+        background:linear-gradient(135deg,#ff9800,#ff5722);
+        color:white;
+        ">
+
+        <h2>UNSUPERVISED</h2>
+
+        <h3>K-Means Clustering</h3>
+
+        <p>
+        Mengelompokkan pengguna
+        berdasarkan pola ulasan.
+        </p>
+
+        </div>
+
+        """,
+        unsafe_allow_html=True)
+
+    st.subheader(
+        "RINGKASAN PERBANDINGAN"
+    )
+
+
+    comparison = pd.DataFrame({
+
+        "Model":[
+            "SVM",
+            "K-Means"
+        ],
+
+        "Jenis":[
+            "Supervised",
+            "Unsupervised"
+        ],
+
+        "Output":[
+            "Prediksi Sentimen",
+            "Cluster Persona"
+        ],
+
+        "Jumlah Kelas":[
+            len(data["Prediksi"].unique()),
+            len(data["Cluster"].unique())
+        ]
+
+    })
+
+
+    st.dataframe(
+        comparison,
+        hide_index=True,
+        use_container_width=True
+    )
+
+
+
+
+
+
+    # =====================================
+    # INSIGHT
+    # =====================================
+
+
+    dominant_sentiment = (
+        data["Prediksi"]
+        .value_counts()
+        .idxmax()
+    )
+
+
+    dominant_cluster = (
+        data["Cluster"]
+        .value_counts()
+        .idxmax()
+    )
+
+
+
+# ===============================
+    # INSIGHT
+    # ===============================
+
+
+    dominant_sentiment = (
+        data["Prediksi"]
+        .value_counts()
+        .idxmax()
+    )
+
+
+    dominant_cluster = (
+        data["Cluster"]
+        .value_counts()
+        .idxmax()
+    )
+
+
+
+    st.markdown(f"""
+
+    <div class="card"
+    style="
+    background:linear-gradient(135deg,#141e30,#243b55);
+    color:white;
+    ">
+
+
+    <h1 style="text-align:center;">
+    SMART ANALYTICS INSIGHT
+    </h1>
+
+
+
+    <div style="
+    display:flex;
+    gap:20px;
+    ">
+
+
+
+    <div style="
+    flex:1;
+    background:rgba(255,255,255,.15);
+    padding:25px;
+    border-radius:20px;
+    text-align:center;
+    ">
+
+    <h2>SUPERVISED</h2>
+
+    <h1>
+    {dominant_sentiment.upper()}
+    </h1>
+
+
+    <p>
+    Sentimen pengguna paling dominan
+    berdasarkan model SVM.
+    </p>
+
+    </div>
+
+
+
+
+    <div style="
+    flex:1;
+    background:rgba(255,255,255,.15);
+    padding:25px;
+    border-radius:20px;
+    text-align:center;
+    ">
+
+    <h2>UNSUPERVISED</h2>
+
+    <h1>
+    CLUSTER {dominant_cluster}
+    </h1>
+
+
+    <p>
+    Kelompok pengguna terbesar
+    berdasarkan K-Means.
+    </p>
+
+    </div>
+
+
+    </div>
+
+
+
+    <hr>
+
+
+    <h3 style="text-align:center;">
+    Kesimpulan:
+    Analisis sentimen memberikan pola opini,
+    sedangkan clustering menemukan persona pengguna.
+    </h3>
+
+
+    </div>
+
+
+    """,
+    unsafe_allow_html=True)
 
 elif page == "Tentang":
 
