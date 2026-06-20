@@ -576,7 +576,6 @@ elif page == "Prediksi":
 elif page == "Upload CSV":
 
     import pandas as pd
-    import numpy as np
     import re
     import nltk
 
@@ -584,208 +583,480 @@ elif page == "Upload CSV":
     from nltk.corpus import stopwords
     from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
+
+    # =====================================
+    # NLTK FIX
+    # =====================================
+
     nltk.download("punkt")
+    nltk.download("punkt_tab")
     nltk.download("stopwords")
+
+
 
     st.markdown("""
     <div style="
-        background: linear-gradient(90deg,#11998e,#38ef7d);
+        background:linear-gradient(90deg,#11998e,#38ef7d);
         padding:25px;
         border-radius:20px;
         text-align:center;
         color:white;
     ">
-        <h1>INPUT MANUAL + PREPROCESSING + SENTIMEN + CLUSTER</h1>
+
+    <h1>
+    INPUT DATA + PREPROCESSING + SENTIMEN + CLUSTER
+    </h1>
+
     </div>
-    """, unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True)
 
-    st.write("")
+
 
     # =====================================
-    # INPUT MANUAL
+    # INPUT DATA
     # =====================================
-    df_template = pd.DataFrame({
-        "userName": [""],
-        "content": [""]
+
+
+    template = pd.DataFrame({
+        "userName":[""],
+        "content":[""]
     })
 
+
     data = st.data_editor(
-        df_template,
+        template,
         num_rows="dynamic",
         use_container_width=True
     )
 
-    st.write("")
 
-    # =====================================
-    # VALIDASI
-    # =====================================
+
     if data is not None:
 
+
         try:
-            data = data.dropna(subset=["content"])
-            data = data[data["content"].astype(str).str.strip() != ""]
+
+
+            # =====================================
+            # VALIDASI
+            # =====================================
+
+            data = data.dropna(
+                subset=["content"]
+            )
+
+
+            data = data[
+                data["content"]
+                .astype(str)
+                .str.strip() != ""
+            ]
+
+
             data = data.reset_index(drop=True)
 
-            if len(data) == 0:
-                st.warning("⚠️ Data masih kosong.")
+
+
+            if len(data)==0:
+
+                st.warning(
+                    "Data masih kosong"
+                )
+
                 st.stop()
 
-            st.subheader("📄 DATA INPUT")
-            st.dataframe(data, use_container_width=True)
+
+
+            st.subheader(
+                "📄 Data Input"
+            )
+
+            st.dataframe(
+                data,
+                use_container_width=True
+            )
+
+
+
 
             # =====================================
-            # 1. CASE FOLDING
+            # CASE FOLDING
             # =====================================
-            data["CaseFolding"] = data["content"].str.lower().str.strip()
+
+
+            data["CaseFolding"] = (
+                data["content"]
+                .astype(str)
+                .str.lower()
+                .str.strip()
+            )
+
+
+
 
             # =====================================
-            # 2. CLEANING
+            # CLEANING
             # =====================================
+
+
             def clean_text(text):
-                text = str(text)
-                text = re.sub(r'http\S+|www\S+', '', text)
-                text = re.sub(r'@\w+', '', text)
-                text = re.sub(r'#\w+', '', text)
-                text = re.sub(r'\d+', '', text)
-                text = re.sub(r'[^\w\s]', '', text)
-                text = re.sub(r'\s+', ' ', text).strip()
-                return text
 
-            data["Cleaning"] = data["CaseFolding"].apply(clean_text)
+                text=str(text)
+
+                text=re.sub(
+                    r"http\S+|www\S+",
+                    "",
+                    text
+                )
+
+                text=re.sub(
+                    r"@\w+",
+                    "",
+                    text
+                )
+
+                text=re.sub(
+                    r"#\w+",
+                    "",
+                    text
+                )
+
+                text=re.sub(
+                    r"\d+",
+                    "",
+                    text
+                )
+
+                text=re.sub(
+                    r"[^\w\s]",
+                    "",
+                    text
+                )
+
+                text=re.sub(
+                    r"\s+",
+                    " ",
+                    text
+                )
+
+                return text.strip()
+
+
+
+            data["Cleaning"] = (
+                data["CaseFolding"]
+                .apply(clean_text)
+            )
+
+
+
+
 
             # =====================================
-            # 3. TOKENIZING
+            # TOKENIZING FIX
             # =====================================
-            data["Tokenizing"] = data["Cleaning"].apply(word_tokenize)
+
+
+            def tokenize_text(text):
+
+                try:
+
+                    return word_tokenize(
+                        str(text)
+                    )
+
+                except:
+
+                    return str(text).split()
+
+
+
+            data["Tokenizing"] = (
+                data["Cleaning"]
+                .apply(tokenize_text)
+            )
+
+
+
+
 
             # =====================================
-            # 4. STOPWORD REMOVAL
+            # STOPWORD
             # =====================================
-            stop_words = set(stopwords.words("indonesian"))
-            stop_words.update(["yg", "dg", "aja", "nih", "sih", "nya"])
 
-            def remove_stopwords(words):
-                return [w for w in words if w not in stop_words]
 
-            data["WithoutStopwords"] = data["Tokenizing"].apply(remove_stopwords)
+            stop_words=set(
+                stopwords.words(
+                    "indonesian"
+                )
+            )
+
+
+            stop_words.update([
+                "yg",
+                "dg",
+                "aja",
+                "nih",
+                "sih",
+                "nya"
+            ])
+
+
+
+            def remove_stop(words):
+
+                return [
+                    w for w in words
+                    if w not in stop_words
+                ]
+
+
+
+            data["WithoutStopwords"] = (
+                data["Tokenizing"]
+                .apply(remove_stop)
+            )
+
+
+
+
 
             # =====================================
-            # 5. NORMALIZATION
+            # NORMALIZATION
             # =====================================
-            norm_dict = {
-                "gk": "tidak",
-                "ga": "tidak",
-                "nggak": "tidak",
-                "tdk": "tidak",
-                "bgt": "banget",
-                "apk": "aplikasi",
-                "app": "aplikasi",
-                "krn": "karena",
-                "utk": "untuk",
-                "dr": "dari",
-                "udh": "sudah",
-                "blm": "belum"
+
+
+            kamus={
+
+                "gk":"tidak",
+                "ga":"tidak",
+                "nggak":"tidak",
+                "tdk":"tidak",
+                "bgt":"banget",
+                "apk":"aplikasi",
+                "app":"aplikasi",
+                "krn":"karena",
+                "udh":"sudah",
+                "blm":"belum"
+
             }
 
-            def normalize(words):
-                return " ".join([norm_dict.get(w, w) for w in words])
 
-            data["Normalized"] = data["WithoutStopwords"].apply(normalize)
+
+            def normalisasi(words):
+
+                return " ".join(
+                    [
+                    kamus.get(
+                        w,w
+                    )
+                    for w in words
+                    ]
+                )
+
+
+
+            data["Normalized"] = (
+                data["WithoutStopwords"]
+                .apply(normalisasi)
+            )
+
+
+
+
 
             # =====================================
-            # 6. STEMMING
+            # STEMMING
             # =====================================
-            factory = StemmerFactory()
-            stemmer = factory.create_stemmer()
 
-            data["Stemming"] = data["Normalized"].apply(lambda x: stemmer.stem(str(x)))
+
+            factory=StemmerFactory()
+
+            stemmer=factory.create_stemmer()
+
+
+
+            data["Stemming"] = (
+                data["Normalized"]
+                .apply(
+                    lambda x:
+                    stemmer.stem(str(x))
+                )
+            )
+
+
+
+
 
             # =====================================
-            # 7. SENTIMEN DICTIONARY
+            # SENTIMEN
             # =====================================
-            positif = [
-                "bagus","baik","cepat","mudah","mantap","bantu",
-                "lengkap","praktis","puas","nyaman","suka","aman"
+
+
+            positif=[
+                "bagus",
+                "baik",
+                "cepat",
+                "mudah",
+                "mantap",
+                "puas",
+                "aman",
+                "nyaman"
             ]
 
-            negatif = [
-                "buruk","error","gagal","lambat","lemot","bug",
-                "susah","ribet","kecewa","parah","rusak"
+
+            negatif=[
+                "buruk",
+                "error",
+                "gagal",
+                "lambat",
+                "lemot",
+                "bug",
+                "susah",
+                "kecewa"
             ]
 
-            # =====================================
-            # 8. LABELING SENTIMEN
-            # =====================================
-            def sentiment_analysis(text):
-                words = str(text).split()
-                score = 0
 
-                for w in words:
-                    if w in positif:
-                        score += 1
-                    elif w in negatif:
-                        score -= 1
 
-                if score > 0:
-                    label = "positif"
-                elif score < 0:
-                    label = "negatif"
+            def sentiment(text):
+
+                score=0
+
+
+                for word in str(text).split():
+
+                    if word in positif:
+
+                        score+=1
+
+
+                    elif word in negatif:
+
+                        score-=1
+
+
+
+                if score>0:
+
+                    label="positif"
+
+                elif score<0:
+
+                    label="negatif"
+
                 else:
-                    label = "netral"
 
-                return score, label
+                    label="netral"
 
-            hasil = data["Stemming"].apply(sentiment_analysis)
-            data["score"] = hasil.apply(lambda x: x[0])
-            data["sentimen"] = hasil.apply(lambda x: x[1])
+
+
+                return score,label
+
+
+
+
+            hasil=(
+                data["Stemming"]
+                .apply(sentiment)
+            )
+
+
+
+            data["score"]=(
+                hasil.apply(
+                    lambda x:x[0]
+                )
+            )
+
+
+            data["sentimen"]=(
+                hasil.apply(
+                    lambda x:x[1]
+                )
+            )
+
+
+
+
 
             # =====================================
-            # 9. CLUSTERING (FIX UNTUK UNSUPERVISED)
+            # CLUSTER
             # =====================================
-            try:
-                vector = tfidf.transform(data["content"])
-                data["Cluster"] = kmeans_model.predict(vector)
-            except:
-                st.warning("⚠️ Clustering belum aktif / model tidak tersedia")
+
+
+            if "tfidf" in globals() and "kmeans_model" in globals():
+
+
+                try:
+
+                    vector=tfidf.transform(
+                        data["content"]
+                    )
+
+
+                    data["Cluster"]=(
+                        kmeans_model
+                        .predict(vector)
+                    )
+
+
+                except:
+
+                    data["Cluster"]="Belum tersedia"
+
+
+
+            else:
+
+                data["Cluster"]="Belum tersedia"
+
+
+
+
+
 
             # =====================================
             # OUTPUT
             # =====================================
-            st.success("✅ Preprocessing, Sentimen & Cluster selesai!")
 
-            st.subheader("📊 HASIL AKHIR")
+
+            st.success(
+                "✅ Preprocessing selesai"
+            )
+
 
             st.dataframe(
-                data[[
-                    "userName",
-                    "content",
-                    "CaseFolding",
-                    "Cleaning",
-                    "Tokenizing",
-                    "WithoutStopwords",
-                    "Normalized",
-                    "Stemming",
-                    "score",
-                    "sentimen",
-                    "Cluster"
-                ]],
+                data,
                 use_container_width=True
             )
 
-            # =====================================
-            # CHART
-            # =====================================
-            st.subheader("📈 Distribusi Sentimen")
-            st.bar_chart(data["sentimen"].value_counts())
 
-            # =====================================
-            # SAVE SESSION (PENTING)
-            # =====================================
-            st.session_state["data_upload"] = data
+
+            st.subheader(
+                "📊 Distribusi Sentimen"
+            )
+
+
+            st.bar_chart(
+                data["sentimen"]
+                .value_counts()
+            )
+
+
+
+            # SIMPAN
+
+            st.session_state["data_upload"]=data
+
+
 
         except Exception as e:
-            st.error("Terjadi kesalahan saat memproses data.")
+
+            st.error(
+                "Terjadi kesalahan"
+            )
+
             st.exception(e)
 
 elif page == "Riwayat":
