@@ -12,9 +12,6 @@ from sklearn.metrics import (
 )
 import plotly.express as px
 from wordcloud import WordCloud
-import nltk
-
-nltk.data.path.append("/home/appuser/nltk_data")
 
 st.set_page_config(
     page_title="Analisis Sentimen M-Pajak",
@@ -587,25 +584,7 @@ elif page == "Upload CSV":
     from nltk.corpus import stopwords
     from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-    # =====================================
-# DOWNLOAD NLTK RESOURCE
-# =====================================
-
-try:
-    nltk.data.find("tokenizers/punkt")
-except LookupError:
     nltk.download("punkt")
-
-
-try:
-    nltk.data.find("tokenizers/punkt_tab")
-except LookupError:
-    nltk.download("punkt_tab")
-
-
-try:
-    nltk.data.find("corpora/stopwords")
-except LookupError:
     nltk.download("stopwords")
 
     st.markdown("""
@@ -677,15 +656,8 @@ except LookupError:
 
             # =====================================
             # 3. TOKENIZING
-# =====================================
-# 3. TOKENIZING
-# =====================================
-def tokenize_text(text):
-    try:
-        return word_tokenize(str(text))
-    except Exception:
-        return str(text).split()
-        data["Tokenizing"] = data["Cleaning"].apply(tokenize_text)
+            # =====================================
+            data["Tokenizing"] = data["Cleaning"].apply(word_tokenize)
 
             # =====================================
             # 4. STOPWORD REMOVAL
