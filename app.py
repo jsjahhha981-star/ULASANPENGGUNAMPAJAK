@@ -677,19 +677,15 @@ except LookupError:
 
             # =====================================
             # 3. TOKENIZING
-            # =====================================
-            # =====================================
-# TOKENIZING FIX
 # =====================================
-
+# 3. TOKENIZING
+# =====================================
 def tokenize_text(text):
     try:
         return word_tokenize(str(text))
-    except:
+    except Exception:
         return str(text).split()
-
-
-data["Tokenizing"] = data["Cleaning"].apply(tokenize_text)
+        data["Tokenizing"] = data["Cleaning"].apply(tokenize_text)
 
             # =====================================
             # 4. STOPWORD REMOVAL
