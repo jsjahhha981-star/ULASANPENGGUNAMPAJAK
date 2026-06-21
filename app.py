@@ -585,8 +585,13 @@ elif page == "Upload CSV":
     from nltk.corpus import stopwords
     from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-    nltk.download("punkt")
-    nltk.download("stopwords")
+    # ================================
+# NLTK RESOURCE
+# ================================
+
+nltk.download("punkt")
+nltk.download("punkt_tab")
+nltk.download("stopwords")
 
     st.markdown("""
     <div style="
@@ -663,13 +668,27 @@ elif page == "Upload CSV":
             data["Cleaning"] = data["CaseFolding"].apply(clean_text)
 
             # ================================
-            # TOKENIZING
-            # ================================
+# TOKENIZING
+# ================================
 
-            data["Tokenizing"] = (
-                data["Cleaning"]
-                .apply(word_tokenize)
-            )
+def tokenize_text(text):
+
+    try:
+        return word_tokenize(
+            str(text),
+            language="english"
+        )
+
+    except:
+
+        return str(text).split()
+
+
+
+data["Tokenizing"] = (
+    data["Cleaning"]
+    .apply(tokenize_text)
+)
 
             # ================================
             # STOPWORD
