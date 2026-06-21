@@ -585,13 +585,16 @@ elif page == "Upload CSV":
     from nltk.corpus import stopwords
     from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-    # ================================
-# NLTK RESOURCE
-# ================================
 
-nltk.download("punkt")
-nltk.download("punkt_tab")
-nltk.download("stopwords")
+    # ================================
+    # NLTK RESOURCE
+    # ================================
+
+    nltk.download("punkt")
+    nltk.download("punkt_tab")
+    nltk.download("stopwords")
+
+
 
     st.markdown("""
     <div style="
@@ -605,7 +608,11 @@ nltk.download("stopwords")
     </div>
     """, unsafe_allow_html=True)
 
+
+
     st.write("")
+
+
 
     # ================================
     # INPUT
@@ -616,26 +623,52 @@ nltk.download("stopwords")
         "content": [""]
     })
 
+
     data = st.data_editor(
         df_template,
         num_rows="dynamic",
         use_container_width=True
     )
 
+
+
     if data is not None:
 
         try:
 
-            data = data.dropna(subset=["content"])
-            data = data[data["content"].astype(str).str.strip() != ""]
+            data = data.dropna(
+                subset=["content"]
+            )
+
+            data = data[
+                data["content"]
+                .astype(str)
+                .str.strip() != ""
+            ]
+
             data = data.reset_index(drop=True)
 
+
+
             if len(data) == 0:
-                st.warning("Data masih kosong")
+                st.warning(
+                    "Data masih kosong"
+                )
                 st.stop()
 
-            st.subheader("📄 DATA INPUT")
-            st.dataframe(data, use_container_width=True)
+
+
+            st.subheader(
+                "📄 DATA INPUT"
+            )
+
+
+            st.dataframe(
+                data,
+                use_container_width=True
+            )
+
+
 
             # ================================
             # CASE FOLDING
@@ -648,6 +681,8 @@ nltk.download("stopwords")
                 .str.strip()
             )
 
+
+
             # ================================
             # CLEANING
             # ================================
@@ -656,39 +691,73 @@ nltk.download("stopwords")
 
                 text = str(text)
 
-                text = re.sub(r"http\S+|www\S+", "", text)
-                text = re.sub(r"@\w+", "", text)
-                text = re.sub(r"#\w+", "", text)
-                text = re.sub(r"\d+", "", text)
-                text = re.sub(r"[^\w\s]", "", text)
-                text = re.sub(r"\s+", " ", text)
+                text = re.sub(
+                    r"http\S+|www\S+",
+                    "",
+                    text
+                )
 
-                return text.strip()
+                text = re.sub(
+                    r"@\w+",
+                    "",
+                    text
+                )
 
-            data["Cleaning"] = data["CaseFolding"].apply(clean_text)
+                text = re.sub(
+                    r"#\w+",
+                    "",
+                    text
+                )
+
+                text = re.sub(
+                    r"\d+",
+                    "",
+                    text
+                )
+
+                text = re.sub(
+                    r"[^\w\s]",
+                    "",
+                    text
+                )
+
+                return re.sub(
+                    r"\s+",
+                    " ",
+                    text
+                ).strip()
+
+
+
+            data["Cleaning"] = (
+                data["CaseFolding"]
+                .apply(clean_text)
+            )
+
+
 
             # ================================
-# TOKENIZING
-# ================================
+            # TOKENIZING FIX
+            # ================================
 
-def tokenize_text(text):
+            def tokenize_text(text):
 
-    try:
-        return word_tokenize(
-            str(text),
-            language="english"
-        )
+                try:
 
-    except:
+                    return word_tokenize(
+                        str(text)
+                    )
 
-        return str(text).split()
+                except:
+
+                    return str(text).split()
 
 
 
-data["Tokenizing"] = (
-    data["Cleaning"]
-    .apply(tokenize_text)
-)
+            data["Tokenizing"] = (
+                data["Cleaning"]
+                .apply(tokenize_text)
+            )
 
             # ================================
             # STOPWORD
