@@ -462,7 +462,7 @@ elif page == "Prediksi":
             with col1:
 
                 st.subheader(
-                    "😊 Hasil Sentimen"
+                    "HASIL SUPERVISED"
                 )
 
                 st.metric(
@@ -486,7 +486,7 @@ elif page == "Prediksi":
             with col2:
 
                 st.subheader(
-                    "🧠 Persona Pengguna"
+                    "HASIL UNSUPERVISED"
                 )
 
                 st.metric(
@@ -576,114 +576,65 @@ elif page == "Prediksi":
 elif page == "Upload CSV":
 
     import pandas as pd
+    import numpy as np
     import re
     import nltk
+    import streamlit as st
 
     from nltk.tokenize import word_tokenize
     from nltk.corpus import stopwords
     from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-
-    # =====================================
-    # NLTK FIX
-    # =====================================
-
     nltk.download("punkt")
-    nltk.download("punkt_tab")
     nltk.download("stopwords")
-
-
 
     st.markdown("""
     <div style="
-        background:linear-gradient(90deg,#11998e,#38ef7d);
+        background: linear-gradient(90deg,#11998e,#38ef7d);
         padding:25px;
         border-radius:20px;
         text-align:center;
         color:white;
     ">
-
-    <h1>
-    INPUT DATA + PREPROCESSING + SENTIMEN + CLUSTER
-    </h1>
-
+        <h1>INPUT MANUAL + PREPROCESSING + SENTIMEN + SVM + CLUSTER</h1>
     </div>
-    """,
-    unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
+    st.write("")
 
+    # ================================
+    # INPUT
+    # ================================
 
-    # =====================================
-    # INPUT DATA
-    # =====================================
-
-
-    template = pd.DataFrame({
-        "userName":[""],
-        "content":[""]
+    df_template = pd.DataFrame({
+        "userName": [""],
+        "content": [""]
     })
 
-
     data = st.data_editor(
-        template,
+        df_template,
         num_rows="dynamic",
         use_container_width=True
     )
 
-
-
     if data is not None:
-
 
         try:
 
-
-            # =====================================
-            # VALIDASI
-            # =====================================
-
-            data = data.dropna(
-                subset=["content"]
-            )
-
-
-            data = data[
-                data["content"]
-                .astype(str)
-                .str.strip() != ""
-            ]
-
-
+            data = data.dropna(subset=["content"])
+            data = data[data["content"].astype(str).str.strip() != ""]
             data = data.reset_index(drop=True)
 
-
-
-            if len(data)==0:
-
-                st.warning(
-                    "Data masih kosong"
-                )
-
+            if len(data) == 0:
+                st.warning("Data masih kosong")
                 st.stop()
 
+            st.subheader("📄 DATA INPUT")
+            st.dataframe(data, use_container_width=True)
 
-
-            st.subheader(
-                "📄 Data Input"
-            )
-
-            st.dataframe(
-                data,
-                use_container_width=True
-            )
-
-
-
-
-            # =====================================
+            # ================================
             # CASE FOLDING
-            # =====================================
-
+            # ================================
 
             data["CaseFolding"] = (
                 data["content"]
@@ -692,106 +643,41 @@ elif page == "Upload CSV":
                 .str.strip()
             )
 
-
-
-
-            # =====================================
+            # ================================
             # CLEANING
-            # =====================================
-
+            # ================================
 
             def clean_text(text):
 
-                text=str(text)
+                text = str(text)
 
-                text=re.sub(
-                    r"http\S+|www\S+",
-                    "",
-                    text
-                )
-
-                text=re.sub(
-                    r"@\w+",
-                    "",
-                    text
-                )
-
-                text=re.sub(
-                    r"#\w+",
-                    "",
-                    text
-                )
-
-                text=re.sub(
-                    r"\d+",
-                    "",
-                    text
-                )
-
-                text=re.sub(
-                    r"[^\w\s]",
-                    "",
-                    text
-                )
-
-                text=re.sub(
-                    r"\s+",
-                    " ",
-                    text
-                )
+                text = re.sub(r"http\S+|www\S+", "", text)
+                text = re.sub(r"@\w+", "", text)
+                text = re.sub(r"#\w+", "", text)
+                text = re.sub(r"\d+", "", text)
+                text = re.sub(r"[^\w\s]", "", text)
+                text = re.sub(r"\s+", " ", text)
 
                 return text.strip()
 
+            data["Cleaning"] = data["CaseFolding"].apply(clean_text)
 
-
-            data["Cleaning"] = (
-                data["CaseFolding"]
-                .apply(clean_text)
-            )
-
-
-
-
-
-            # =====================================
-            # TOKENIZING FIX
-            # =====================================
-
-
-            def tokenize_text(text):
-
-                try:
-
-                    return word_tokenize(
-                        str(text)
-                    )
-
-                except:
-
-                    return str(text).split()
-
-
+            # ================================
+            # TOKENIZING
+            # ================================
 
             data["Tokenizing"] = (
                 data["Cleaning"]
-                .apply(tokenize_text)
+                .apply(word_tokenize)
             )
 
-
-
-
-
-            # =====================================
+            # ================================
             # STOPWORD
-            # =====================================
+            # ================================
 
-
-            stop_words=set(
-                stopwords.words(
-                    "indonesian"
-                )
+            stop_words = set(
+                stopwords.words("indonesian")
             )
-
 
             stop_words.update([
                 "yg",
@@ -802,111 +688,81 @@ elif page == "Upload CSV":
                 "nya"
             ])
 
-
-
-            def remove_stop(words):
-
-                return [
-                    w for w in words
-                    if w not in stop_words
-                ]
-
-
-
             data["WithoutStopwords"] = (
                 data["Tokenizing"]
-                .apply(remove_stop)
-            )
-
-
-
-
-
-            # =====================================
-            # NORMALIZATION
-            # =====================================
-
-
-            kamus={
-
-                "gk":"tidak",
-                "ga":"tidak",
-                "nggak":"tidak",
-                "tdk":"tidak",
-                "bgt":"banget",
-                "apk":"aplikasi",
-                "app":"aplikasi",
-                "krn":"karena",
-                "udh":"sudah",
-                "blm":"belum"
-
-            }
-
-
-
-            def normalisasi(words):
-
-                return " ".join(
-                    [
-                    kamus.get(
-                        w,w
-                    )
-                    for w in words
+                .apply(
+                    lambda x: [
+                        w for w in x
+                        if w not in stop_words
                     ]
                 )
+            )
 
+            # ================================
+            # NORMALIZATION
+            # ================================
 
+            norm_dict = {
+                "gk": "tidak",
+                "ga": "tidak",
+                "nggak": "tidak",
+                "tdk": "tidak",
+                "bgt": "banget",
+                "apk": "aplikasi",
+                "app": "aplikasi",
+                "krn": "karena",
+                "utk": "untuk",
+                "dr": "dari",
+                "udh": "sudah",
+                "blm": "belum"
+            }
 
             data["Normalized"] = (
                 data["WithoutStopwords"]
-                .apply(normalisasi)
+                .apply(
+                    lambda x: " ".join(
+                        [
+                            norm_dict.get(w, w)
+                            for w in x
+                        ]
+                    )
+                )
             )
 
-
-
-
-
-            # =====================================
+            # ================================
             # STEMMING
-            # =====================================
+            # ================================
 
-
-            factory=StemmerFactory()
-
-            stemmer=factory.create_stemmer()
-
-
+            factory = StemmerFactory()
+            stemmer = factory.create_stemmer()
 
             data["Stemming"] = (
                 data["Normalized"]
                 .apply(
-                    lambda x:
-                    stemmer.stem(str(x))
+                    lambda x: stemmer.stem(str(x))
                 )
             )
 
+            # ================================
+            # SENTIMEN LEXICON
+            # ================================
 
-
-
-
-            # =====================================
-            # SENTIMEN
-            # =====================================
-
-
-            positif=[
+            positif = [
                 "bagus",
                 "baik",
                 "cepat",
                 "mudah",
                 "mantap",
+                "bantu",
+                "lengkap",
+                "praktis",
                 "puas",
-                "aman",
-                "nyaman"
+                "nyaman",
+                "suka",
+                "aman"
             ]
 
-
-            negatif=[
+            negatif = [
                 "buruk",
                 "error",
                 "gagal",
@@ -914,149 +770,181 @@ elif page == "Upload CSV":
                 "lemot",
                 "bug",
                 "susah",
-                "kecewa"
+                "ribet",
+                "kecewa",
+                "parah",
+                "rusak"
             ]
-
-
 
             def sentiment(text):
 
-                score=0
-
+                score = 0
 
                 for word in str(text).split():
 
                     if word in positif:
-
-                        score+=1
-
+                        score += 1
 
                     elif word in negatif:
+                        score -= 1
 
-                        score-=1
+                if score > 0:
+                    label = "positif"
 
-
-
-                if score>0:
-
-                    label="positif"
-
-                elif score<0:
-
-                    label="negatif"
+                elif score < 0:
+                    label = "negatif"
 
                 else:
+                    label = "netral"
 
-                    label="netral"
+                return score, label
 
+            result = data["Stemming"].apply(sentiment)
 
+            data["score"] = result.apply(lambda x: x[0])
+            data["sentimen"] = result.apply(lambda x: x[1])
 
-                return score,label
+            # ================================
+            # TF-IDF
+            # ================================
 
-
-
-
-            hasil=(
-                data["Stemming"]
-                .apply(sentiment)
+            vector = tfidf.transform(
+                data["content"]
             )
 
+            # ================================
+            # SVM
+            # ================================
 
+            data["Prediksi_SVM"] = (
+                svm_model.predict(vector)
+            )
 
-            data["score"]=(
-                hasil.apply(
-                    lambda x:x[0]
+            # ================================
+            # CONFIDENCE SVM
+            # ================================
+
+            if hasattr(svm_model, "predict_proba"):
+
+                probability = (
+                    svm_model.predict_proba(vector)
                 )
-            )
 
-
-            data["sentimen"]=(
-                hasil.apply(
-                    lambda x:x[1]
+                confidence_svm = (
+                    np.max(probability, axis=1)
+                    * 100
                 )
-            )
-
-
-
-
-
-            # =====================================
-            # CLUSTER
-            # =====================================
-
-
-            if "tfidf" in globals() and "kmeans_model" in globals():
-
-
-                try:
-
-                    vector=tfidf.transform(
-                        data["content"]
-                    )
-
-
-                    data["Cluster"]=(
-                        kmeans_model
-                        .predict(vector)
-                    )
-
-
-                except:
-
-                    data["Cluster"]="Belum tersedia"
-
-
 
             else:
 
-                data["Cluster"]="Belum tersedia"
+                decision = (
+                    svm_model.decision_function(vector)
+                )
 
+                confidence_svm = (
+                    abs(decision)
+                    /
+                    (np.max(abs(decision)) + 1e-10)
+                ) * 100
 
-
-
-
-
-            # =====================================
-            # OUTPUT
-            # =====================================
-
-
-            st.success(
-                "✅ Preprocessing selesai"
+            data["Confidence_SVM"] = (
+                confidence_svm
+                .round(2)
+                .astype(str)
+                + "%"
             )
 
+            # ================================
+            # # KMEANS CLUSTER
+            # ================================
+            cluster_pred = (
+                kmeans_model.predict(vector)
+                )
+            data["Cluster"] = cluster_pred
+            # ================================
+            # # SENTIMEN CLUSTER
+            # # ================================
+            data["Sentimen_Cluster"] = (
+                data["Prediksi_SVM"]
+                )
+
+            # ================================
+            # CONFIDENCE CLUSTER
+            # ================================
+
+            distance = (
+                kmeans_model.transform(vector)
+            )
+
+            nearest_distance = np.min(
+                distance,
+                axis=1
+            )
+
+            furthest_distance = np.max(
+                distance,
+                axis=1
+            )
+
+            confidence_cluster = (
+                1 -
+                (
+                    nearest_distance
+                    /
+                    (furthest_distance + 1e-10)
+                )
+            ) * 100
+
+            data["Confidence_Cluster"] = (
+                confidence_cluster
+                .round(2)
+                .astype(str)
+                + "%"
+            )
+
+            # ================================
+            # OUTPUT
+            # ================================
+
+            st.success("✅ Proses selesai")
+
+            st.subheader("📊 HASIL AKHIR")
 
             st.dataframe(
-                data,
+                data[
+                    [
+                        "userName",
+                        "content",
+                        "CaseFolding",
+                        "Cleaning",
+                        "Tokenizing",
+                        "WithoutStopwords",
+                        "Normalized",
+                        "Stemming",
+                        "score",
+                        "sentimen",
+                        "Prediksi_SVM",
+                        "Confidence_SVM",
+                        "Cluster",
+                        "Sentimen_Cluster",
+                        "Confidence_Cluster"
+                    ]
+                ],
                 use_container_width=True
             )
 
-
-
-            st.subheader(
-                "📊 Distribusi Sentimen"
-            )
-
+            st.subheader("📈 Distribusi Sentimen")
 
             st.bar_chart(
                 data["sentimen"]
                 .value_counts()
             )
 
-
-
-            # SIMPAN
-
-            st.session_state["data_upload"]=data
-
-
+            st.session_state["data_upload"] = data
 
         except Exception as e:
 
-            st.error(
-                "Terjadi kesalahan"
-            )
-
+            st.error("Terjadi kesalahan")
             st.exception(e)
 
 elif page == "Riwayat":
@@ -2112,9 +2000,9 @@ elif page == "Perbandingan":
         accuracy_score,
         precision_score,
         recall_score,
-        f1_score
+        f1_score,
+        silhouette_score
     )
-
 
     # =====================================
     # STYLE
@@ -2130,41 +2018,16 @@ elif page == "Perbandingan":
         margin-bottom:20px;
     }
 
-
-    .metric-card{
-        padding:20px;
-        border-radius:20px;
-        color:white;
-        text-align:center;
-        box-shadow:0 5px 15px rgba(0,0,0,0.15);
-    }
-
-
-    .metric-title{
-        font-size:15px;
-    }
-
-
-    .metric-value{
-        font-size:32px;
-        font-weight:bold;
-    }
-
     </style>
     """,
     unsafe_allow_html=True)
-
-
-
 
     # =====================================
     # HEADER
     # =====================================
 
-
     st.markdown("""
-    <div class="
-    main-card"
+    <div class="main-card"
     style="
     background:linear-gradient(135deg,#11998e,#38ef7d);
     color:white;
@@ -2178,16 +2041,12 @@ elif page == "Perbandingan":
     </h3>
 
     </div>
-
     """,
     unsafe_allow_html=True)
-
-
 
     # =====================================
     # CHECK DATA
     # =====================================
-
 
     if "data_upload" not in st.session_state:
 
@@ -2197,66 +2056,126 @@ elif page == "Perbandingan":
 
         st.stop()
 
-
-
     data = st.session_state["data_upload"]
 
-
-
-
     # =====================================
-    # AUTO PREDIKSI
+    # AUTO PREDIKSI SVM
     # =====================================
 
-
-    if "Prediksi" not in data.columns:
-
+    if "Prediksi_SVM" not in data.columns:
 
         vector = tfidf.transform(
             data["content"].astype(str)
         )
 
-
-        data["Prediksi"] = (
+        data["Prediksi_SVM"] = (
             svm_model.predict(vector)
         )
-
-
-
 
     # =====================================
     # AUTO CLUSTER
     # =====================================
 
-
     if "Cluster" not in data.columns:
-
 
         vector = tfidf.transform(
             data["content"].astype(str)
         )
 
-
         data["Cluster"] = (
             kmeans_model.predict(vector)
         )
 
-
-
     st.session_state["data_upload"] = data
 
-
-
-
-
     # =====================================
-    # MODEL CARD
+    # METRIK SUPERVISED
     # =====================================
 
+    svm_accuracy = 0
+    svm_precision = 0
+    svm_recall = 0
+    svm_f1 = 0
 
-    col1,col2 = st.columns(2)
+    if (
+        "sentimen" in data.columns
+        and
+        "Prediksi_SVM" in data.columns
+    ):
 
+        y_true = (
+            data["sentimen"]
+            .astype(str)
+            .str.lower()
+        )
 
+        y_pred = (
+            data["Prediksi_SVM"]
+            .astype(str)
+            .str.lower()
+        )
+
+        svm_accuracy = (
+            accuracy_score(
+                y_true,
+                y_pred
+            ) * 100
+        )
+
+        svm_precision = (
+            precision_score(
+                y_true,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ) * 100
+        )
+
+        svm_recall = (
+            recall_score(
+                y_true,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ) * 100
+        )
+
+        svm_f1 = (
+            f1_score(
+                y_true,
+                y_pred,
+                average="weighted",
+                zero_division=0
+            ) * 100
+        )
+
+    # =====================================
+    # METRIK UNSUPERVISED
+    # =====================================
+
+    cluster_score = 0
+
+    try:
+
+        vector_cluster = tfidf.transform(
+            data["content"].astype(str)
+        )
+
+        cluster_score = (
+            silhouette_score(
+                vector_cluster,
+                data["Cluster"]
+            ) * 100
+        )
+
+    except:
+        cluster_score = 0
+
+    # =====================================
+    # CARD MODEL
+    # =====================================
+
+    col1, col2 = st.columns(2)
 
     with col1:
 
@@ -2272,17 +2191,12 @@ elif page == "Perbandingan":
         <h3>SVM Classification</h3>
 
         <p>
-        Melakukan prediksi sentimen
-        pengguna berdasarkan data.
+        Melakukan prediksi sentimen pengguna.
         </p>
 
         </div>
-
         """,
         unsafe_allow_html=True)
-
-
-
 
     with col2:
 
@@ -2298,44 +2212,50 @@ elif page == "Perbandingan":
         <h3>K-Means Clustering</h3>
 
         <p>
-        Mengelompokkan pengguna
-        berdasarkan pola ulasan.
+        Mengelompokkan pola ulasan pengguna.
         </p>
 
         </div>
-
         """,
         unsafe_allow_html=True)
+
+
+    # =====================================
+    # TABEL PERBANDINGAN
+    # =====================================
 
     st.subheader(
         "RINGKASAN PERBANDINGAN"
     )
 
-
     comparison = pd.DataFrame({
 
-        "Model":[
+        "Model": [
             "SVM",
             "K-Means"
         ],
 
-        "Jenis":[
+        "Jenis": [
             "Supervised",
             "Unsupervised"
         ],
 
-        "Output":[
+        "Output": [
             "Prediksi Sentimen",
             "Cluster Persona"
         ],
 
-        "Jumlah Kelas":[
-            len(data["Prediksi"].unique()),
+        "Jumlah Kelas": [
+            len(data["Prediksi_SVM"].unique()),
             len(data["Cluster"].unique())
+        ],
+
+        "Evaluasi": [
+            f"Akurasi {svm_accuracy:.2f}%",
+            f"Akurasi {cluster_score:.2f}%"
         ]
 
     })
-
 
     st.dataframe(
         comparison,
@@ -2343,137 +2263,53 @@ elif page == "Perbandingan":
         use_container_width=True
     )
 
-
-
-
-
-
     # =====================================
     # INSIGHT
     # =====================================
 
-
     dominant_sentiment = (
-        data["Prediksi"]
+        data["Prediksi_SVM"]
         .value_counts()
         .idxmax()
     )
-
 
     dominant_cluster = (
         data["Cluster"]
         .value_counts()
         .idxmax()
     )
-
-
-
-# ===============================
-    # INSIGHT
-    # ===============================
-
-
-    dominant_sentiment = (
-        data["Prediksi"]
-        .value_counts()
-        .idxmax()
-    )
-
-
-    dominant_cluster = (
-        data["Cluster"]
-        .value_counts()
-        .idxmax()
-    )
-
-
 
     st.markdown(f"""
 
-    <div class="card"
-    style="
+    <div style="
     background:linear-gradient(135deg,#141e30,#243b55);
     color:white;
+    padding:25px;
+    border-radius:20px;
     ">
-
 
     <h1 style="text-align:center;">
     SMART ANALYTICS INSIGHT
     </h1>
 
+    <h2>
+    Sentimen Dominan :
+    {str(dominant_sentiment).upper()}
+    </h2>
 
-
-    <div style="
-    display:flex;
-    gap:20px;
-    ">
-
-
-
-    <div style="
-    flex:1;
-    background:rgba(255,255,255,.15);
-    padding:25px;
-    border-radius:20px;
-    text-align:center;
-    ">
-
-    <h2>SUPERVISED</h2>
-
-    <h1>
-    {dominant_sentiment.upper()}
-    </h1>
-
-
-    <p>
-    Sentimen pengguna paling dominan
-    berdasarkan model SVM.
-    </p>
-
-    </div>
-
-
-
-
-    <div style="
-    flex:1;
-    background:rgba(255,255,255,.15);
-    padding:25px;
-    border-radius:20px;
-    text-align:center;
-    ">
-
-    <h2>UNSUPERVISED</h2>
-
-    <h1>
-    CLUSTER {dominant_cluster}
-    </h1>
-
-
-    <p>
-    Kelompok pengguna terbesar
-    berdasarkan K-Means.
-    </p>
-
-    </div>
-
-
-    </div>
-
-
+    <h2>
+    Cluster Dominan :
+    {dominant_cluster}
+    </h2>
 
     <hr>
 
-
-    <h3 style="text-align:center;">
-    Kesimpulan:
-    Analisis sentimen memberikan pola opini,
-    sedangkan clustering menemukan persona pengguna.
+    <h3>
+    Accuracy Supervised : {svm_accuracy:.2f}%<br>
+    Accuracy Unsupervised : {cluster_score:.2f}%
     </h3>
 
-
     </div>
-
 
     """,
     unsafe_allow_html=True)
