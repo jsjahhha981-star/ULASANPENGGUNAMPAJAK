@@ -2339,8 +2339,8 @@ elif page == "Perbandingan":
         ],
 
         "Evaluasi": [
-            f"Akurasi {svm_accuracy:.2f}%",
-            f"Akurasi {cluster_score:.2f}%"
+            f"Confidience {svm_accuracy:.2f}%",
+            f"Confidience {cluster_score:.2f}%"
         ]
 
     })
@@ -2393,8 +2393,8 @@ elif page == "Perbandingan":
     <hr>
 
     <h3>
-    Accuracy Supervised : {svm_accuracy:.2f}%<br>
-    Accuracy Unsupervised : {cluster_score:.2f}%
+    Confidience Supervised : {svm_accuracy:.2f}%<br>
+    Confidience Unsupervised : {cluster_score:.2f}%
     </h3>
 
     </div>
