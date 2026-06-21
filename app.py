@@ -2352,55 +2352,140 @@ elif page == "Perbandingan":
     )
 
     # =====================================
-    # INSIGHT
-    # =====================================
+# INSIGHT DASHBOARD
+# =====================================
 
-    dominant_sentiment = (
-        data["Prediksi_SVM"]
-        .value_counts()
-        .idxmax()
-    )
+dominant_sentiment = (
+    data["Prediksi_SVM"]
+    .value_counts()
+    .idxmax()
+)
 
-    dominant_cluster = (
-        data["Cluster"]
-        .value_counts()
-        .idxmax()
-    )
+
+dominant_cluster = (
+    data["Cluster"]
+    .value_counts()
+    .idxmax()
+)
+
+
+
+col1, col2, col3 = st.columns(3)
+
+
+
+with col1:
 
     st.markdown(f"""
 
     <div style="
-    background:linear-gradient(135deg,#141e30,#243b55);
-    color:white;
+    background:linear-gradient(135deg,#11998e,#38ef7d);
     padding:25px;
     border-radius:20px;
+    color:white;
+    height:180px;
+    box-shadow:0 8px 20px rgba(0,0,0,0.2);
     ">
 
-    <h1 style="text-align:center;">
-    SMART ANALYTICS INSIGHT
-    </h1>
+    <h3>😊 SENTIMEN DOMINAN</h3>
 
-    <h2>
-    Sentimen Dominan :
+    <h1>
     {str(dominant_sentiment).upper()}
-    </h2>
-
-    <h2>
-    Cluster Dominan :
-    {dominant_cluster}
-    </h2>
-
-    <hr>
-
-    <h3>
-    Confidience Supervised : {svm_accuracy:.2f}%<br>
-    Confidience Unsupervised : {cluster_score:.2f}%
-    </h3>
+    </h1>
 
     </div>
 
     """,
     unsafe_allow_html=True)
+
+
+
+with col2:
+
+    st.markdown(f"""
+
+    <div style="
+    background:linear-gradient(135deg,#667eea,#764ba2);
+    padding:25px;
+    border-radius:20px;
+    color:white;
+    height:180px;
+    box-shadow:0 8px20px rgba(0,0,0,0.2);
+    ">
+
+    <h3>🔵 CLUSTER DOMINAN</h3>
+
+    <h1>
+    CLUSTER {dominant_cluster}
+    </h1>
+
+    </div>
+
+    """,
+    unsafe_allow_html=True)
+
+
+
+with col3:
+
+    st.markdown(f"""
+
+    <div style="
+    background:linear-gradient(135deg,#ff9966,#ff5e62);
+    padding:25px;
+    border-radius:20px;
+    color:white;
+    height:180px;
+    box-shadow:0 8px20px rgba(0,0,0,0.2);
+    ">
+
+    <h3>🤖 MODEL SCORE</h3>
+
+    <h2>
+    SVM :
+    {svm_accuracy:.2f}%
+    </h2>
+
+    <h2>
+    KMEANS :
+    {cluster_score:.2f}%
+    </h2>
+
+    </div>
+
+    """,
+    unsafe_allow_html=True)
+
+
+
+# jarak
+st.write("")
+
+
+
+st.markdown("""
+
+<div style="
+background:linear-gradient(90deg,#141e30,#243b55);
+padding:15px;
+border-radius:15px;
+color:white;
+text-align:center;
+">
+
+<h2>
+🚀 SMART ANALYTICS INSIGHT
+</h2>
+
+<p>
+Dashboard analisis menggunakan 
+SVM Classification + KMeans Clustering
+</p>
+
+</div>
+
+""",
+unsafe_allow_html=True)
 
 elif page == "Tentang":
 
